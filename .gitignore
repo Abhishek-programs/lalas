@@ -1,0 +1,32 @@
+# AI / Editor context files
+claude.md
+CLAUDE.md
+
+# Dependencies
+node_modules/
+
+# Keep environment variables out of version control
+.env
+.env.*
+!.env.example
+
+/generated/prisma
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Build output
+dist/
+build/
+out/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
