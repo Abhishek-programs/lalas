@@ -10,19 +10,17 @@ export class PromptQueue {
   public queueEvents: QueueEvents;
 
   constructor() {
-    this.queue = new Queue(QUEUE_NAME, {
-      connection: {
-        host: new URL(ENV.REDIS_URL).hostname || 'localhost',
-        port: parseInt(new URL(ENV.REDIS_URL).port) || 6379,
-      },
-    });
+    const url = new URL(ENV.REDIS_URL);
+    const connection = {
+      host: url.hostname,
+      port: Number(url.port) || 6379,
+      password: url.password || undefined,
+      username: url.username || undefined,
+      tls: url.protocol === 'rediss:' ? {} : undefined,
+    };
 
-    this.queueEvents = new QueueEvents(QUEUE_NAME, {
-      connection: {
-        host: new URL(ENV.REDIS_URL).hostname || 'localhost',
-        port: parseInt(new URL(ENV.REDIS_URL).port) || 6379,
-      },
-    });
+    this.queue = new Queue(QUEUE_NAME, { connection });
+    this.queueEvents = new QueueEvents(QUEUE_NAME, { connection });
   }
 
   /**

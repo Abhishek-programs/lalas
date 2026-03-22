@@ -8,11 +8,17 @@ export class RedisService implements IRedisService {
   private client: Redis;
 
   constructor() {
-    this.client = new Redis(ENV.REDIS_URL, {
-      maxRetriesPerRequest: null, // Required by bullmq
+    const url = new URL(ENV.REDIS_URL);
+    this.client = new Redis({
+      host: url.hostname,
+      port: Number(url.port) || 6379,
+      password: url.password || undefined,
+      username: url.username || undefined,
+      tls: url.protocol === 'rediss:' ? {} : undefined,
+      maxRetriesPerRequest: null,
       retryStrategy(times) {
         return Math.min(times * 50, 2000);
-      }
+      },
     });
 
     this.client.on('error', (err) => {

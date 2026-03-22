@@ -49,8 +49,11 @@ export function startWorker() {
     },
     {
       connection: {
-        host: redisUrl.hostname || 'localhost',
-        port: parseInt(redisUrl.port) || 6379,
+        host: redisUrl.hostname,
+        port: Number(redisUrl.port) || 6379,
+        password: redisUrl.password || undefined,
+        username: redisUrl.username || undefined,
+        tls: redisUrl.protocol === 'rediss:' ? {} : undefined,
       },
       concurrency: 5,
     }
