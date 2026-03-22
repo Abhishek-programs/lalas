@@ -7,6 +7,9 @@ import { rateLimiter } from '../middlewares/RateLimiterMiddleware';
 
 const router = Router();
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const isValidUUID = (id: string) => UUID_RE.test(id);
+
 /**
  * @swagger
  * /audio:
@@ -29,11 +32,11 @@ router.get('/', authMiddleware, rateLimiter, cacheMiddleware(60), async (req: Au
   try {
     const audioRepo = container.resolve(AudioRepository);
     const cursor = req.query.cursor as string | undefined;
-    const limit = parseInt(req.query.limit as string) || 10;
+    const limit = Math.min(parseInt(req.query.limit as string) || 10, 100);
     const result = await audioRepo.findAll(cursor, limit);
     return res.status(200).json(result);
-  } catch (err: any) {
-    return res.status(500).json({ error: err.message });
+  } catch {
+    return res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -49,21 +52,26 @@ router.get('/', authMiddleware, rateLimiter, cacheMiddleware(60), async (req: Au
  *       - in: path
  *         name: id
  *         required: true
- *         schema: { type: string }
+ *         schema: { type: string, format: uuid }
  *     responses:
  *       200: { description: Audio found }
+ *       400: { description: Invalid UUID }
  *       404: { description: Audio not found }
  */
 router.get('/:id', authMiddleware, rateLimiter, cacheMiddleware(60), async (req: AuthenticatedRequest, res: Response) => {
   try {
+    const id = req.params.id as string;
+    if (!isValidUUID(id)) {
+      return res.status(400).json({ error: 'Invalid audio ID format' });
+    }
     const audioRepo = container.resolve(AudioRepository);
-    const audio = await audioRepo.findById(req.params.id as string);
+    const audio = await audioRepo.findById(id);
     if (!audio) {
       return res.status(404).json({ error: 'Audio not found' });
     }
     return res.status(200).json(audio);
-  } catch (err: any) {
-    return res.status(500).json({ error: err.message });
+  } catch {
+    return res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -79,7 +87,7 @@ router.get('/:id', authMiddleware, rateLimiter, cacheMiddleware(60), async (req:
  *       - in: path
  *         name: id
  *         required: true
- *         schema: { type: string }
+ *         schema: { type: string, format: uuid }
  *     requestBody:
  *       content:
  *         application/json:
@@ -89,15 +97,27 @@ router.get('/:id', authMiddleware, rateLimiter, cacheMiddleware(60), async (req:
  *               title: { type: string }
  *     responses:
  *       200: { description: Audio updated }
+ *       400: { description: Invalid UUID or missing fields }
+ *       404: { description: Audio not found }
  */
 router.put('/:id', authMiddleware, rateLimiter, async (req: AuthenticatedRequest, res: Response) => {
   try {
+    const id = req.params.id as string;
+    if (!isValidUUID(id)) {
+      return res.status(400).json({ error: 'Invalid audio ID format' });
+    }
+    if (!req.body.title) {
+      return res.status(400).json({ error: 'title is required' });
+    }
     const audioRepo = container.resolve(AudioRepository);
-    const audio = await audioRepo.update(req.params.id as string, { title: req.body.title });
+    const audio = await audioRepo.update(id, { title: req.body.title });
     await invalidateCachePrefix('/audio');
     return res.status(200).json(audio);
   } catch (err: any) {
-    return res.status(500).json({ error: err.message });
+    if (err.code === 'P2025') {
+      return res.status(404).json({ error: 'Audio not found' });
+    }
+    return res.status(500).json({ error: 'Internal server error' });
   }
 });
 

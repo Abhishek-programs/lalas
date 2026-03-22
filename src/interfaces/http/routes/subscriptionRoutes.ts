@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { container } from '../../../container';
 import { SubscriptionService } from '../../../application/use-cases/SubscriptionService';
 import { AuthenticatedRequest, authMiddleware } from '../middlewares/AuthMiddleware';
+import { invalidateCachePrefix } from '../middlewares/CacheMiddleware';
 
 const router = Router();
 
@@ -21,6 +22,8 @@ router.post('/subscribe', authMiddleware, async (req: AuthenticatedRequest, res:
   try {
     const subscriptionService = container.resolve(SubscriptionService);
     const user = await subscriptionService.subscribe(req.user!.id);
+    // Invalidate cached user data so next GET reflects new subscription_status
+    await invalidateCachePrefix('/users');
     return res.status(200).json({ message: 'Subscribed successfully', subscription_status: user.subscription_status });
   } catch (err: any) {
     return res.status(400).json({ error: err.message });
@@ -43,6 +46,8 @@ router.post('/cancel', authMiddleware, async (req: AuthenticatedRequest, res: Re
   try {
     const subscriptionService = container.resolve(SubscriptionService);
     const user = await subscriptionService.cancel(req.user!.id);
+    // Invalidate cached user data so next GET reflects updated subscription_status
+    await invalidateCachePrefix('/users');
     return res.status(200).json({ message: 'Subscription cancelled', subscription_status: user.subscription_status });
   } catch (err: any) {
     return res.status(400).json({ error: err.message });

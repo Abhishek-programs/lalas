@@ -1,6 +1,7 @@
 import { injectable, inject } from 'tsyringe';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import { randomUUID } from 'crypto';
 import { IUserRepository } from '../interfaces';
 import { User } from '../../domain/entities';
 import { ENV } from '../../config/env';
@@ -49,19 +50,22 @@ export class AuthService {
   }
 
   async refresh(refreshToken: string): Promise<AuthTokens> {
+    // Verify signature and expiry first — if invalid, stop immediately.
+    let payload: any;
     try {
-      const payload = jwt.verify(refreshToken, ENV.JWT_REFRESH_SECRET) as any;
-      const user = await this.userRepository.findById(payload.sub);
-
-      if (!user || user.refresh_token !== refreshToken) {
-        throw new Error('Invalid refresh token');
-      }
-
-      // Token rotation: issue new pair and invalidate old refresh token
-      return this.generateTokens(user);
-    } catch (err) {
+      payload = jwt.verify(refreshToken, ENV.JWT_REFRESH_SECRET);
+    } catch {
       throw new Error('Invalid refresh token');
     }
+
+    // Check stored token matches exactly (rotation guard).
+    const user = await this.userRepository.findById(payload.sub);
+    if (!user || user.refresh_token !== refreshToken) {
+      throw new Error('Invalid refresh token');
+    }
+
+    // Issue new pair and overwrite stored refresh token (rotation).
+    return this.generateTokens(user);
   }
 
   async logout(userId: string, accessToken: string): Promise<void> {
@@ -91,16 +95,18 @@ export class AuthService {
     const accessToken = jwt.sign(
       { sub: user.id, email: user.email, subscription_status: user.subscription_status },
       ENV.JWT_SECRET,
-      { expiresIn: 900 } // 15 minutes in seconds
+      { expiresIn: 900 } // 15 minutes
     );
 
+    // jti (JWT ID) is a unique UUID so two tokens generated in the same second
+    // always produce different signatures — required for rotation to be secure.
     const refreshToken = jwt.sign(
-      { sub: user.id },
+      { sub: user.id, jti: randomUUID() },
       ENV.JWT_REFRESH_SECRET,
-      { expiresIn: 2592000 } // 30 days in seconds
+      { expiresIn: 2592000 } // 30 days
     );
 
-    // Store refresh token in DB (token rotation)
+    // Overwrite the stored refresh token (invalidates the previous one).
     await this.userRepository.updateRefreshToken(user.id, refreshToken);
 
     return { accessToken, refreshToken };

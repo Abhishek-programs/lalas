@@ -13,14 +13,14 @@ export function startWorker() {
     QUEUE_NAME,
     async (job: Job) => {
       const { promptId, userId } = job.data;
-      
+
       const promptRepo = container.resolve(PromptRepository);
       const audioRepo = container.resolve(AudioRepository);
 
-      // 1. Set status to PROCESSING
+      // 1. Set status to PROCESSING (idempotent — cron may have already set it)
       await promptRepo.updateStatus(promptId, PromptStatus.PROCESSING);
 
-      // 2. Simulate processing delay (2-5 seconds)
+      // 2. Simulate processing delay (2–5 seconds)
       const delay = 2000 + Math.random() * 3000;
       await new Promise(resolve => setTimeout(resolve, delay));
 
@@ -36,12 +36,12 @@ export function startWorker() {
       await promptRepo.updateStatus(promptId, PromptStatus.COMPLETED);
 
       // 5. Send WebSocket notification to user
-      // Import dynamically to avoid circular dependency
       const { WebSocketService } = require('../../interfaces/ws/WebSocketService');
       const wsService = container.resolve(WebSocketService) as any;
       wsService.notifyUser(userId, {
-        type: 'PROMPT_COMPLETED',
+        type: 'prompt:completed',
         promptId,
+        audioId: audio.id,
         audio,
       });
 
@@ -60,8 +60,20 @@ export function startWorker() {
     console.log(`Job ${job.id} completed`);
   });
 
-  worker.on('failed', (job, err) => {
+  worker.on('failed', async (job, err) => {
     console.error(`Job ${job?.id} failed:`, err.message);
+
+    // When all retry attempts are exhausted, reset the prompt back to PENDING
+    // so the cron scheduler can re-enqueue it on the next cycle.
+    if (job && job.attemptsMade >= (job.opts.attempts ?? 1)) {
+      try {
+        const promptRepo = container.resolve(PromptRepository);
+        await promptRepo.updateStatus(job.data.promptId, PromptStatus.PENDING);
+        console.log(`Reset prompt ${job.data.promptId} to PENDING after all retries failed`);
+      } catch (resetErr) {
+        console.error('Failed to reset prompt status:', resetErr);
+      }
+    }
   });
 
   console.log('Prompt processing worker started');

@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
 import { singleton } from 'tsyringe';
 
 @singleton()
@@ -6,7 +7,8 @@ export class PrismaService {
   public client: PrismaClient;
 
   constructor() {
-    this.client = new PrismaClient();
+    const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
+    this.client = new PrismaClient({ adapter });
   }
 
   async connect() {
